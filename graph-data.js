@@ -288,3 +288,7 @@ const GRAPH_DATA = {
     {"from": "triton_qa", "to": "triton_qa_after"}
   ]
 };
+
+if (typeof window !== 'undefined') {
+  window.GRAPH_DATA = GRAPH_DATA;
+}
