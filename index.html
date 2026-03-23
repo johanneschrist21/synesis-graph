@@ -237,6 +237,20 @@
             task:     { color: '#ec4899', size: 6,  name: 'Sub-Task' }
         };
 
+        function colorWithAlpha(color, alpha) {
+            if (typeof color !== 'string') return color;
+            if (color.charAt(0) !== '#') return color;
+            var hex = color.slice(1);
+            if (hex.length === 3) {
+                hex = hex.split('').map(function(c) { return c + c; }).join('');
+            }
+            if (hex.length !== 6) return color;
+            var r = parseInt(hex.slice(0, 2), 16);
+            var g = parseInt(hex.slice(2, 4), 16);
+            var b = parseInt(hex.slice(4, 6), 16);
+            return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+        }
+
         // Populate Legend
         const legendList = document.getElementById('legend-list');
         Object.keys(theme).forEach(type => {
@@ -319,7 +333,7 @@
             .linkColor(link => {
                 const sid = typeof link.source === 'object' ? link.source.id : link.source;
                 const src = gNodesById[sid];
-                return src ? src.color + '55' : 'rgba(148,163,184,0.2)';
+                return src ? colorWithAlpha(src.color, 0.33) : 'rgba(148,163,184,0.2)';
             })
             .linkWidth(link => {
                 const sid = typeof link.source === 'object' ? link.source.id : link.source;
@@ -368,8 +382,8 @@
                 // Glow
                 const glowRadius = node.val * (isMatch ? 3.5 : 2.2);
                 const grd = ctx.createRadialGradient(node.x, node.y, node.val * 0.3, node.x, node.y, glowRadius);
-                grd.addColorStop(0, node.color + (isDimmed ? '22' : '55'));
-                grd.addColorStop(1, node.color + '00');
+                grd.addColorStop(0, colorWithAlpha(node.color, isDimmed ? 0.13 : 0.33));
+                grd.addColorStop(1, colorWithAlpha(node.color, 0));
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, glowRadius, 0, 2 * Math.PI);
                 ctx.fillStyle = grd;
