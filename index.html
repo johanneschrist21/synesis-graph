@@ -373,6 +373,10 @@
                 document.getElementById('node-info').style.display = 'none';
             })
             .nodeCanvasObject((node, ctx, globalScale) => {
+                if (!Number.isFinite(node.x) || !Number.isFinite(node.y) || !Number.isFinite(globalScale) || globalScale <= 0) {
+                    return;
+                }
+
                 const label = node.name;
                 const fontSize = 12 / globalScale;
                 const hasChildren = Boolean(childrenById[node.id] && childrenById[node.id].length);
