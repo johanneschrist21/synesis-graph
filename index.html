@@ -6,8 +6,8 @@
     <title>Synesis Knowledge Graph</title>
     <!-- Tailwind for UI overlays -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Force Graph Library -->
-    <script src="https://unpkg.com/force-graph"></script>
+    <!-- Force Graph Library (local copy for reliability on GitHub Pages) -->
+    <script src="./vendor/force-graph.min.js"></script>
     <style>
         :root {
             --bg: #0f172a;
@@ -128,6 +128,25 @@
             from { opacity: 0; transform: translateY(10px); }
             to   { opacity: 1; transform: translateY(0); }
         }
+
+        #graph-error {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+            max-width: min(92vw, 680px);
+            display: none;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(248, 113, 113, 0.5);
+            background: rgba(127, 29, 29, 0.8);
+            color: #fee2e2;
+            font-size: 14px;
+            line-height: 1.45;
+            backdrop-filter: blur(8px);
+            white-space: pre-wrap;
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-200">
@@ -182,8 +201,23 @@
 
     <!-- Graph Container -->
     <div id="graph-container"></div>
+    <div id="graph-error"></div>
     <script src="./graph-data.js"></script>
     <script>
+        (function initGraphPage() {
+        const showGraphError = (error) => {
+            const box = document.getElementById('graph-error');
+            if (!box) return;
+            const msg = error && error.message ? error.message : String(error);
+            box.textContent = `Graph failed to render.\n${msg}`;
+            box.style.display = 'block';
+        };
+
+        try {
+        if (typeof window.ForceGraph !== 'function') {
+            throw new Error('ForceGraph library did not load. Verify vendor/force-graph.min.js exists.');
+        }
+
         const graphData = window.GRAPH_DATA;
         if (!graphData || !Array.isArray(graphData.nodes) || !Array.isArray(graphData.edges)) {
             throw new Error('GRAPH_DATA is missing or invalid. Make sure graph-data.js is loaded before the graph script.');
@@ -417,6 +451,11 @@
             Graph.width(window.innerWidth);
             Graph.height(window.innerHeight);
         });
+        } catch (error) {
+            console.error(error);
+            showGraphError(error);
+        }
+        })();
     </script>
 </body>
 </html>
