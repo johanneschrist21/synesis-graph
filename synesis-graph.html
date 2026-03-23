@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Synesis Knowledge Graph</title>
+    <!-- Tailwind for UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Force Graph Library -->
+    <script src="https://unpkg.com/force-graph"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --bg-panel: rgba(15, 23, 42, 0.85);
+            --bg-panel-hover: rgba(30, 41, 59, 0.95);
+            --border: rgba(51, 65, 85, 0.8);
+            --text-primary: #f8fafc;
+            --text-muted: #94a3b8;
+            --node-label-bg: rgba(15, 23, 42, 0.85);
+            --graph-bg: #0f172a;
+        }
+        :root.light {
+            --bg: #f1f5f9;
+            --bg-panel: rgba(255, 255, 255, 0.88);
+            --bg-panel-hover: rgba(241, 245, 249, 0.98);
+            --border: rgba(203, 213, 225, 0.9);
+            --text-primary: #0f172a;
+            --text-muted: #475569;
+            --node-label-bg: rgba(255, 255, 255, 0.88);
+            --graph-bg: #e2e8f0;
+        }
+
+        * { transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease; }
+
+        body { margin: 0; overflow: hidden; background-color: var(--bg); font-family: 'Inter', sans-serif; }
+        #graph-container { width: 100vw; height: 100vh; }
+
+        .panel {
+            background: var(--bg-panel);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 1.5px 4px rgba(0,0,0,0.10);
+        }
+        .panel-text { color: var(--text-primary); }
+        .panel-muted { color: var(--text-muted); }
+
+        /* Theme Toggle Button */
+        #theme-toggle {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--bg-panel);
+            backdrop-filter: blur(12px);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            pointer-events: auto;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        #theme-toggle:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+        #theme-toggle .toggle-track {
+            width: 36px; height: 20px;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            position: relative;
+            transition: background 0.3s;
+        }
+        :root.light #theme-toggle .toggle-track {
+            background: linear-gradient(135deg, #f59e0b, #f97316);
+        }
+        #theme-toggle .toggle-thumb {
+            position: absolute; top: 3px; left: 3px;
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+        }
+        :root.light #theme-toggle .toggle-thumb { transform: translateX(16px); }
+
+        /* Tooltip */
+        .scene-tooltip {
+            background: var(--bg-panel) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: 10px;
+            padding: 10px 14px !important;
+            color: var(--text-primary) !important;
+            font-size: 13px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            backdrop-filter: blur(12px);
+        }
+
+        /* Search Box */
+        #search-box {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 7px 16px 7px 36px;
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+            width: 180px;
+            transition: width 0.3s ease, box-shadow 0.2s ease;
+            backdrop-filter: blur(12px);
+        }
+        #search-box:focus { width: 240px; box-shadow: 0 0 0 2px #3b82f680; }
+        #search-box::placeholder { color: var(--text-muted); }
+        .search-wrap { position: relative; pointer-events: auto; }
+        .search-icon {
+            position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
+            color: var(--text-muted); font-size: 14px; pointer-events: none;
+        }
+
+        /* Node info panel */
+        #node-info {
+            position: absolute; bottom: 70px; right: 24px;
+            min-width: 220px; max-width: 300px;
+            padding: 16px 18px;
+            z-index: 20;
+            display: none;
+            animation: fadeSlideUp 0.2s ease;
+        }
+        @keyframes fadeSlideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200">
+
+    <!-- UI Overlay: Header -->
+    <div class="absolute top-0 left-0 p-5 pointer-events-none z-10 w-full flex justify-between items-start">
+        <!-- Left: Title + Search -->
+        <div class="flex flex-col gap-3">
+            <div>
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 tracking-tight">
+                    Synesis Architecture
+                </h1>
+                <p class="mt-0.5 text-sm panel-muted">Interactive Knowledge Graph Explorer</p>
+            </div>
+            <!-- Search -->
+            <div class="search-wrap">
+                <span class="search-icon">🔍</span>
+                <input id="search-box" type="text" placeholder="Search nodes…" autocomplete="off" />
+            </div>
+        </div>
+
+        <!-- Right: Theme Toggle + Legend -->
+        <div class="flex flex-col items-end gap-3">
+            <!-- Theme Toggle -->
+            <button id="theme-toggle" title="Toggle dark/light mode">
+                <span id="theme-label">🌙 Dark</span>
+                <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            </button>
+
+            <!-- Legend -->
+            <div class="panel p-4 pointer-events-auto">
+                <h3 class="text-xs font-semibold panel-muted uppercase tracking-wider mb-3">Node Types</h3>
+                <ul class="space-y-2 text-sm panel-text" id="legend-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Node Info Panel -->
+    <div id="node-info" class="panel">
+        <div class="flex items-center gap-2 mb-2">
+            <div id="node-info-dot" style="width:12px;height:12px;border-radius:50%;flex-shrink:0"></div>
+            <span id="node-info-name" class="font-bold text-sm panel-text"></span>
+        </div>
+        <div class="text-xs panel-muted" id="node-info-type"></div>
+        <div class="text-xs panel-muted mt-1" id="node-info-children"></div>
+    </div>
+
+    <!-- UI Overlay: Instructions -->
+    <div class="absolute bottom-5 left-5 pointer-events-none z-10 text-sm panel px-4 py-2" style="border-radius:999px">
+        <span class="panel-muted"><span class="panel-text font-semibold">Scroll</span> to zoom • <span class="panel-text font-semibold">Drag</span> to pan • <span class="panel-text font-semibold">Click</span> node to expand</span>
+    </div>
+
+    <!-- Graph Container -->
+    <div id="graph-container"></div>
+
+    <script>
+        // ── State (declared first so all callbacks can close over them) ──
+        let isLight = false;
+        let searchTerm = '';
+
+        // ── The provided JSON Data ────────────────────────────────
+        const rawData = {
+          "nodes": [
+            {"id": "synesis", "label": "Synesis", "type": "center"},
+            
+            {"id": "telegram", "label": "Telegram", "type": "channel"},
+            {"id": "whatsapp", "label": "WhatsApp", "type": "channel"},
+            {"id": "gmail", "label": "Gmail", "type": "channel"},
+            
+            {"id": "docker", "label": "DOCKER", "type": "skill"},
+            {"id": "gmail_skill", "label": "GMAIL", "type": "skill"},
+            {"id": "mlcore", "label": "MLCORE", "type": "skill"},
+            {"id": "qa_testing", "label": "QA-TESTING", "type": "skill"},
+            {"id": "slides_maker", "label": "SLIDES-MAKER", "type": "skill"},
+            {"id": "triton_agent", "label": "TRITON-AGENT", "type": "skill"},
+            
+            {"id": "docker_skill", "label": "SKILL.md", "type": "file", "parent": "docker"},
+            {"id": "gmail_setup", "label": "GMAIL_SETUP.md", "type": "file", "parent": "gmail_skill"},
+            {"id": "gmail_check", "label": "GMAIL_SYSTEM_CHECK.md", "type": "file", "parent": "gmail_skill"},
+            {"id": "mlcore_main", "label": "MLCORE.md", "type": "file", "parent": "mlcore"},
+            {"id": "mlcore_req", "label": "MLCORE_REQUIREMENTS.md", "type": "file", "parent": "mlcore"},
+            {"id": "qa_main", "label": "QA_TESTING.md", "type": "file", "parent": "qa_testing"},
+            {"id": "qa_req", "label": "REQUIREMENTS_CHECKING.md", "type": "file", "parent": "qa_testing"},
+            {"id": "qa_test_conv", "label": "TEST_SCRIPT_CONVERTER.md", "type": "file", "parent": "qa_testing"},
+            {"id": "qa_run", "label": "RUN_AND_VERIFY.md", "type": "file", "parent": "qa_testing"},
+            {"id": "qa_prod", "label": "PROD_SCRIPT_CONVERTER.md", "type": "file", "parent": "qa_testing"},
+            {"id": "slides_skill", "label": "SKILL.md", "type": "file", "parent": "slides_maker"},
+            {"id": "slides_style", "label": "STYLE_PRESETS.md", "type": "file", "parent": "slides_maker"},
+            {"id": "triton_orch", "label": "TRITON_ORCHESTRATOR.md", "type": "file", "parent": "triton_agent"},
+            {"id": "triton_refactor", "label": "REFACTOR_NOTEBOOK.md", "type": "file", "parent": "triton_agent"},
+            {"id": "triton_cat", "label": "APPEND_CATALOG.md", "type": "file", "parent": "triton_agent"},
+            {"id": "triton_res", "label": "APPEND_RESOURCE.md", "type": "file", "parent": "triton_agent"},
+            {"id": "triton_dev", "label": "DEVELOP_SCRIPTS.md", "type": "file", "parent": "triton_agent"},
+            {"id": "triton_qa", "label": "TRITON_QA.md", "type": "file", "parent": "triton_agent"},
+            
+            {"id": "inbound", "label": "INBOUND MEDIA", "type": "category"},
+            {"id": "inbound_65", "label": "file_65", "type": "media"},
+            {"id": "inbound_66", "label": "file_66", "type": "media"},
+            {"id": "inbound_67", "label": "file_67", "type": "media"},
+            {"id": "inbound_68", "label": "file_68", "type": "media"},
+            {"id": "inbound_69", "label": "file_69", "type": "media"},
+            {"id": "inbound_70", "label": "file_70", "type": "media"},
+            {"id": "inbound_71", "label": "file_71", "type": "media"},
+            
+            {"id": "docker_when", "label": "When to Use", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_layout", "label": "Environment Layout", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_images", "label": "Available Images", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_build", "label": "Build Pattern", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_gotchas", "label": "Known Gotchas", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_run", "label": "Run Pattern", "type": "task", "parent": "docker_skill"},
+            {"id": "docker_smoke", "label": "Smoke Test", "type": "task", "parent": "docker_skill"},
+            
+            {"id": "gmail_setup_install", "label": "Install gogcli", "type": "task", "parent": "gmail_setup"},
+            {"id": "gmail_setup_oauth", "label": "Get OAuth Credentials", "type": "task", "parent": "gmail_setup"},
+            {"id": "gmail_setup_config", "label": "Configure gogcli", "type": "task", "parent": "gmail_setup"},
+            {"id": "gmail_setup_auth", "label": "Authenticate", "type": "task", "parent": "gmail_setup"},
+            {"id": "gmail_setup_test", "label": "Test", "type": "task", "parent": "gmail_setup"},
+            
+            {"id": "gmail_check_prereq", "label": "Prerequisites", "type": "task", "parent": "gmail_check"},
+            {"id": "gmail_check_preflight", "label": "System Check", "type": "task", "parent": "gmail_check"},
+            {"id": "gmail_check_quick", "label": "Quick Send", "type": "task", "parent": "gmail_check"},
+            {"id": "gmail_check_reauth", "label": "Re-authenticate", "type": "task", "parent": "gmail_check"},
+            {"id": "gmail_check_trouble", "label": "Troubleshooting", "type": "task", "parent": "gmail_check"},
+            
+            {"id": "mlcore_overview", "label": "Overview", "type": "task", "parent": "mlcore_main"},
+            {"id": "mlcore_structure", "label": "Component Structure", "type": "task", "parent": "mlcore_main"},
+            {"id": "mlcore_step", "label": "Step-by-Step", "type": "task", "parent": "mlcore_main"},
+            {"id": "mlcore_patterns", "label": "Key Patterns", "type": "task", "parent": "mlcore_main"},
+            
+            {"id": "mlcore_req_info", "label": "Required Information", "type": "task", "parent": "mlcore_req"},
+            {"id": "mlcore_req_logic", "label": "Function Logic", "type": "task", "parent": "mlcore_req"},
+            {"id": "mlcore_req_config", "label": "Configuration Details", "type": "task", "parent": "mlcore_req"},
+            {"id": "mlcore_req_example", "label": "Complete Example", "type": "task", "parent": "mlcore_req"},
+            {"id": "mlcore_req_generate", "label": "What I Generate", "type": "task", "parent": "mlcore_req"},
+            
+            {"id": "qa_overview", "label": "Workflow Overview", "type": "task", "parent": "qa_main"},
+            {"id": "qa_status", "label": "Stage Status", "type": "task", "parent": "qa_main"},
+            {"id": "qa_quick", "label": "Quick Start", "type": "task", "parent": "qa_main"},
+            {"id": "qa_env", "label": "Execution Environments", "type": "task", "parent": "qa_main"},
+            
+            {"id": "qa_req_input", "label": "Input Requirements", "type": "task", "parent": "qa_req"},
+            {"id": "qa_req_analysis", "label": "Analysis Checklist", "type": "task", "parent": "qa_req"},
+            {"id": "qa_req_output", "label": "Output Format", "type": "task", "parent": "qa_req"},
+            {"id": "qa_req_report", "label": "Requirements Report", "type": "task", "parent": "qa_req"},
+            
+            {"id": "qa_test_principle", "label": "Principle", "type": "task", "parent": "qa_test_conv"},
+            {"id": "qa_test_path", "label": "Path Changes", "type": "task", "parent": "qa_test_conv"},
+            {"id": "qa_test_simple", "label": "Simple Conversion", "type": "task", "parent": "qa_test_conv"},
+            {"id": "qa_test_not", "label": "What NOT to Change", "type": "task", "parent": "qa_test_conv"},
+            
+            {"id": "qa_run_step1", "label": "Run Test", "type": "task", "parent": "qa_run"},
+            {"id": "qa_run_capture", "label": "Capture Results", "type": "task", "parent": "qa_run"},
+            {"id": "qa_run_verify", "label": "Verification", "type": "task", "parent": "qa_run"},
+            
+            {"id": "qa_prod_revert", "label": "Simple Reversion", "type": "task", "parent": "qa_prod"},
+            {"id": "qa_prod_output", "label": "Output", "type": "task", "parent": "qa_prod"},
+            
+            {"id": "slides_principles", "label": "Core Principles", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_tech", "label": "Technical Note", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_design", "label": "Design Aesthetics", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_viewport", "label": "Viewport Fitting", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_phase0", "label": "Phase 0: Detect", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_phase1", "label": "Phase 1: Content", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_phase2", "label": "Phase 2: Style", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_phase3", "label": "Phase 3: Generate", "type": "task", "parent": "slides_skill"},
+            {"id": "slides_phase4", "label": "Phase 4: PPT", "type": "task", "parent": "slides_skill"},
+            
+            {"id": "slides_dark", "label": "Dark Themes", "type": "task", "parent": "slides_style"},
+            {"id": "slides_light", "label": "Light Themes", "type": "task", "parent": "slides_style"},
+            {"id": "slides_data", "label": "Data Themes", "type": "task", "parent": "slides_style"},
+            {"id": "slides_specialty", "label": "Specialty Themes", "type": "task", "parent": "slides_style"},
+            {"id": "slides_font", "label": "Font Pairing", "type": "task", "parent": "slides_style"},
+            {"id": "slides_gotchas", "label": "CSS Gotchas", "type": "task", "parent": "slides_style"},
+            {"id": "slides_arctic", "label": "Arctic White", "type": "task", "parent": "slides_style"},
+            
+            {"id": "triton_role", "label": "Role & Objective", "type": "task", "parent": "triton_orch"},
+            {"id": "triton_req", "label": "Requirements Gate", "type": "task", "parent": "triton_orch"},
+            {"id": "triton_dep", "label": "Step Dependency", "type": "task", "parent": "triton_orch"},
+            {"id": "triton_flow", "label": "Full Flow", "type": "task", "parent": "triton_orch"},
+            
+            {"id": "triton_refactor_rules", "label": "Notebook Rules", "type": "task", "parent": "triton_refactor"},
+            {"id": "triton_refactor_constraints", "label": "Constraints", "type": "task", "parent": "triton_refactor"},
+            {"id": "triton_refactor_structure", "label": "5-Section Structure", "type": "task", "parent": "triton_refactor"},
+            
+            {"id": "triton_cat_role", "label": "Role & Persona", "type": "task", "parent": "triton_cat"},
+            {"id": "triton_cat_obj", "label": "Objective", "type": "task", "parent": "triton_cat"},
+            {"id": "triton_cat_input", "label": "Input Parameters", "type": "task", "parent": "triton_cat"},
+            {"id": "triton_cat_rules", "label": "Processing Rules", "type": "task", "parent": "triton_cat"},
+            {"id": "triton_cat_lookup", "label": "Table Config Lookup", "type": "task", "parent": "triton_cat"},
+            
+            {"id": "triton_res_role", "label": "Role & Objective", "type": "task", "parent": "triton_res"},
+            {"id": "triton_res_input", "label": "Inputs", "type": "task", "parent": "triton_res"},
+            {"id": "triton_res_logic", "label": "Processing Logic", "type": "task", "parent": "triton_res"},
+            
+            {"id": "triton_dev_role", "label": "Role & Objective", "type": "task", "parent": "triton_dev"},
+            {"id": "triton_dev_var", "label": "Input Variables", "type": "task", "parent": "triton_dev"},
+            {"id": "triton_dev_phase1", "label": "Phase 1: Gathering", "type": "task", "parent": "triton_dev"},
+            {"id": "triton_dev_phase2", "label": "Phase 2: Generation", "type": "task", "parent": "triton_dev"},
+            
+            {"id": "triton_qa_diff", "label": "How Differs", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_input", "label": "Required Inputs", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_flow", "label": "Stage Flow", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_convert", "label": "CONVERT", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_run", "label": "RUN", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_verify", "label": "VERIFY", "type": "task", "parent": "triton_qa"},
+            {"id": "triton_qa_after", "label": "After VERIFY", "type": "task", "parent": "triton_qa"}
+          ],
+          
+          "edges": [
+            {"from": "synesis", "to": "telegram"},
+            {"from": "synesis", "to": "whatsapp"},
+            {"from": "synesis", "to": "gmail"},
+            
+            {"from": "synesis", "to": "docker"},
+            {"from": "synesis", "to": "gmail_skill"},
+            {"from": "synesis", "to": "mlcore"},
+            {"from": "synesis", "to": "qa_testing"},
+            {"from": "synesis", "to": "slides_maker"},
+            {"from": "synesis", "to": "triton_agent"},
+            
+            {"from": "docker", "to": "docker_skill"},
+            {"from": "gmail_skill", "to": "gmail_setup"},
+            {"from": "gmail_skill", "to": "gmail_check"},
+            {"from": "mlcore", "to": "mlcore_main"},
+            {"from": "mlcore", "to": "mlcore_req"},
+            {"from": "qa_testing", "to": "qa_main"},
+            {"from": "qa_testing", "to": "qa_req"},
+            {"from": "qa_testing", "to": "qa_test_conv"},
+            {"from": "qa_testing", "to": "qa_run"},
+            {"from": "qa_testing", "to": "qa_prod"},
+            {"from": "slides_maker", "to": "slides_skill"},
+            {"from": "slides_maker", "to": "slides_style"},
+            {"from": "triton_agent", "to": "triton_orch"},
+            {"from": "triton_agent", "to": "triton_refactor"},
+            {"from": "triton_agent", "to": "triton_cat"},
+            {"from": "triton_agent", "to": "triton_res"},
+            {"from": "triton_agent", "to": "triton_dev"},
+            {"from": "triton_agent", "to": "triton_qa"},
+            
+            {"from": "synesis", "to": "inbound"},
+            {"from": "inbound", "to": "inbound_65"},
+            {"from": "inbound", "to": "inbound_66"},
+            {"from": "inbound", "to": "inbound_67"},
+            {"from": "inbound", "to": "inbound_68"},
+            {"from": "inbound", "to": "inbound_69"},
+            {"from": "inbound", "to": "inbound_70"},
+            {"from": "inbound", "to": "inbound_71"},
+            
+            {"from": "docker_skill", "to": "docker_when"},
+            {"from": "docker_skill", "to": "docker_layout"},
+            {"from": "docker_skill", "to": "docker_images"},
+            {"from": "docker_skill", "to": "docker_build"},
+            {"from": "docker_skill", "to": "docker_gotchas"},
+            {"from": "docker_skill", "to": "docker_run"},
+            {"from": "docker_skill", "to": "docker_smoke"},
+            
+            {"from": "gmail_setup", "to": "gmail_setup_install"},
+            {"from": "gmail_setup", "to": "gmail_setup_oauth"},
+            {"from": "gmail_setup", "to": "gmail_setup_config"},
+            {"from": "gmail_setup", "to": "gmail_setup_auth"},
+            {"from": "gmail_setup", "to": "gmail_setup_test"},
+            
+            {"from": "gmail_check", "to": "gmail_check_prereq"},
+            {"from": "gmail_check", "to": "gmail_check_preflight"},
+            {"from": "gmail_check", "to": "gmail_check_quick"},
+            {"from": "gmail_check", "to": "gmail_check_reauth"},
+            {"from": "gmail_check", "to": "gmail_check_trouble"},
+            
+            {"from": "mlcore_main", "to": "mlcore_overview"},
+            {"from": "mlcore_main", "to": "mlcore_structure"},
+            {"from": "mlcore_main", "to": "mlcore_step"},
+            {"from": "mlcore_main", "to": "mlcore_patterns"},
+            
+            {"from": "mlcore_req", "to": "mlcore_req_info"},
+            {"from": "mlcore_req", "to": "mlcore_req_logic"},
+            {"from": "mlcore_req", "to": "mlcore_req_config"},
+            {"from": "mlcore_req", "to": "mlcore_req_example"},
+            {"from": "mlcore_req", "to": "mlcore_req_generate"},
+            
+            {"from": "qa_main", "to": "qa_overview"},
+            {"from": "qa_main", "to": "qa_status"},
+            {"from": "qa_main", "to": "qa_quick"},
+            {"from": "qa_main", "to": "qa_env"},
+            
+            {"from": "qa_req", "to": "qa_req_input"},
+            {"from": "qa_req", "to": "qa_req_analysis"},
+            {"from": "qa_req", "to": "qa_req_output"},
+            {"from": "qa_req", "to": "qa_req_report"},
+            
+            {"from": "qa_test_conv", "to": "qa_test_principle"},
+            {"from": "qa_test_conv", "to": "qa_test_path"},
+            {"from": "qa_test_conv", "to": "qa_test_simple"},
+            {"from": "qa_test_conv", "to": "qa_test_not"},
+            
+            {"from": "qa_run", "to": "qa_run_step1"},
+            {"from": "qa_run", "to": "qa_run_capture"},
+            {"from": "qa_run", "to": "qa_run_verify"},
+            
+            {"from": "qa_prod", "to": "qa_prod_revert"},
+            {"from": "qa_prod", "to": "qa_prod_output"},
+            
+            {"from": "slides_skill", "to": "slides_principles"},
+            {"from": "slides_skill", "to": "slides_tech"},
+            {"from": "slides_skill", "to": "slides_design"},
+            {"from": "slides_skill", "to": "slides_viewport"},
+            {"from": "slides_skill", "to": "slides_phase0"},
+            {"from": "slides_skill", "to": "slides_phase1"},
+            {"from": "slides_skill", "to": "slides_phase2"},
+            {"from": "slides_skill", "to": "slides_phase3"},
+            {"from": "slides_skill", "to": "slides_phase4"},
+            
+            {"from": "slides_style", "to": "slides_dark"},
+            {"from": "slides_style", "to": "slides_light"},
+            {"from": "slides_style", "to": "slides_data"},
+            {"from": "slides_style", "to": "slides_specialty"},
+            {"from": "slides_style", "to": "slides_font"},
+            {"from": "slides_style", "to": "slides_gotchas"},
+            {"from": "slides_style", "to": "slides_arctic"},
+            
+            {"from": "triton_orch", "to": "triton_role"},
+            {"from": "triton_orch", "to": "triton_req"},
+            {"from": "triton_orch", "to": "triton_dep"},
+            {"from": "triton_orch", "to": "triton_flow"},
+            
+            {"from": "triton_refactor", "to": "triton_refactor_rules"},
+            {"from": "triton_refactor", "to": "triton_refactor_constraints"},
+            {"from": "triton_refactor", "to": "triton_refactor_structure"},
+            
+            {"from": "triton_cat", "to": "triton_cat_role"},
+            {"from": "triton_cat", "to": "triton_cat_obj"},
+            {"from": "triton_cat", "to": "triton_cat_input"},
+            {"from": "triton_cat", "to": "triton_cat_rules"},
+            {"from": "triton_cat", "to": "triton_cat_lookup"},
+            
+            {"from": "triton_res", "to": "triton_res_role"},
+            {"from": "triton_res", "to": "triton_res_input"},
+            {"from": "triton_res", "to": "triton_res_logic"},
+            
+            {"from": "triton_dev", "to": "triton_dev_role"},
+            {"from": "triton_dev", "to": "triton_dev_var"},
+            {"from": "triton_dev", "to": "triton_dev_phase1"},
+            {"from": "triton_dev", "to": "triton_dev_phase2"},
+            
+            {"from": "triton_qa", "to": "triton_qa_diff"},
+            {"from": "triton_qa", "to": "triton_qa_input"},
+            {"from": "triton_qa", "to": "triton_qa_flow"},
+            {"from": "triton_qa", "to": "triton_qa_convert"},
+            {"from": "triton_qa", "to": "triton_qa_run"},
+            {"from": "triton_qa", "to": "triton_qa_verify"},
+            {"from": "triton_qa", "to": "triton_qa_after"}
+          ]
+        };
+
+        // Theme configuration
+        const theme = {
+            center:   { color: '#f59e0b', size: 24, name: 'Core System' },  // Amber
+            channel:  { color: '#3b82f6', size: 14, name: 'Channel' },      // Blue
+            skill:    { color: '#8b5cf6', size: 18, name: 'Skill Module' }, // Purple
+            category: { color: '#f97316', size: 14, name: 'Category' },     // Orange
+            file:     { color: '#10b981', size: 10, name: 'File/Doc' },     // Emerald
+            media:    { color: '#94a3b8', size: 8,  name: 'Media Asset' },  // Slate
+            task:     { color: '#ec4899', size: 6,  name: 'Task/Section' }  // Pink
+        };
+
+        // Populate Legend
+        const legendList = document.getElementById('legend-list');
+        Object.keys(theme).forEach(type => {
+            const li = document.createElement('li');
+            li.className = 'flex items-center gap-2';
+            li.innerHTML = `
+                <div style="width:10px;height:10px;border-radius:50%;background:${theme[type].color};box-shadow:0 0 7px ${theme[type].color}99;flex-shrink:0"></div>
+                <span class="panel-text">${theme[type].name}</span>
+            `;
+            legendList.appendChild(li);
+        });
+
+        // Build hierarchy mapping to support expand/collapse
+        const childrenById = {};
+        rawData.edges.forEach(e => {
+            if (!childrenById[e.from]) childrenById[e.from] = [];
+            childrenById[e.from].push(e.to);
+        });
+
+        // Calculate depths from center ('synesis') to know default collapse state
+        const depths = { 'synesis': 0 };
+        const queue = ['synesis'];
+        while(queue.length > 0) {
+            const id = queue.shift();
+            (childrenById[id] || []).forEach(childId => {
+                if (depths[childId] === undefined) {
+                    depths[childId] = depths[id] + 1;
+                    queue.push(childId);
+                }
+            });
+        }
+
+        // Initialize stateful node objects
+        const gNodes = rawData.nodes.map(n => ({
+            id: n.id,
+            name: n.label,
+            group: n.type,
+            val: theme[n.type]?.size || 5,
+            color: theme[n.type]?.color || '#ffffff',
+            // Collapse nodes at depth 2 or deeper by default (hides depth 3+)
+            collapsed: depths[n.id] >= 2 
+        }));
+
+        const gNodesById = {};
+        gNodes.forEach(n => gNodesById[n.id] = n);
+
+        // Initialize stateful link objects
+        const gLinks = rawData.edges.map(e => ({
+            source: e.from,
+            target: e.to
+        }));
+
+        // Function to compute currently visible graph
+        function getVisibleGraphData() {
+            const visibleNodeIds = new Set(['synesis']);
+            const q = ['synesis'];
+
+            // Traverse from root, stopping at collapsed nodes
+            while(q.length > 0) {
+                const id = q.shift();
+                const node = gNodesById[id];
+                
+                if (!node?.collapsed) {
+                    (childrenById[id] || []).forEach(childId => {
+                        if (!visibleNodeIds.has(childId)) {
+                            visibleNodeIds.add(childId);
+                            q.push(childId);
+                        }
+                    });
+                }
+            }
+
+            // Important Fix: Return cloned link structures! 
+            // force-graph mutates the source/target into object references. If we feed it recycled mutated arrays, it crashes.
+            const visibleNodes = gNodes.filter(n => visibleNodeIds.has(n.id));
+            const visibleLinks = gLinks.filter(l => {
+                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
+                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
+                return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId);
+            }).map(l => ({
+                source: typeof l.source === 'object' ? l.source.id : l.source,
+                target: typeof l.target === 'object' ? l.target.id : l.target
+            }));
+
+            return { nodes: visibleNodes, links: visibleLinks };
+        }
+
+        // Initialize Graph
+        const elem = document.getElementById('graph-container');
+        const Graph = ForceGraph()(elem)
+            .graphData(getVisibleGraphData())
+            .backgroundColor('#0f172a')
+            // Node Styling
+            .nodeId('id')
+            .nodeVal('val')
+            .nodeColor('color')
+            .nodeLabel(node => `<b>${node.name}</b><br/><span style="font-size:11px;opacity:0.7">Type: ${node.group}</span>`)
+            // Links & Physics
+            .linkColor(link => {
+                const sid = typeof link.source === 'object' ? link.source.id : link.source;
+                const src = gNodesById[sid];
+                return src ? src.color + '55' : 'rgba(148,163,184,0.2)';
+            })
+            .linkWidth(link => {
+                const sid = typeof link.source === 'object' ? link.source.id : link.source;
+                const src = gNodesById[sid];
+                if (!src) return 1;
+                return src.group === 'center' ? 2.5 : src.group === 'skill' || src.group === 'category' ? 1.8 : 1;
+            })
+            .linkDirectionalArrowLength(4)
+            .linkDirectionalArrowRelPos(1)
+            .linkDirectionalParticles(2)
+            .linkDirectionalParticleWidth(1.5)
+            .linkDirectionalParticleColor(link => {
+                const sid = typeof link.source === 'object' ? link.source.id : link.source;
+                const src = gNodesById[sid];
+                return src ? src.color : '#94a3b8';
+            })
+            .linkDirectionalParticleSpeed(0.005)
+            // Interactions
+            .onNodeClick(node => {
+                const hasChildren = Boolean(childrenById[node.id]?.length);
+
+                if (hasChildren) {
+                    node.collapsed = !node.collapsed;
+                    Graph.graphData(getVisibleGraphData());
+                }
+
+                // Node info panel
+                const info = document.getElementById('node-info');
+                const childCount = (childrenById[node.id] || []).length;
+                document.getElementById('node-info-dot').style.background = node.color;
+                document.getElementById('node-info-dot').style.boxShadow = `0 0 8px ${node.color}`;
+                document.getElementById('node-info-name').textContent = node.name;
+                document.getElementById('node-info-type').textContent = `Type: ${node.group}`;
+                document.getElementById('node-info-children').textContent = childCount
+                    ? `${childCount} connection${childCount > 1 ? 's' : ''} — click to ${node.collapsed ? 'expand' : 'collapse'}`
+                    : 'Leaf node';
+                info.style.display = 'block';
+
+                Graph.centerAt(node.x, node.y, 800);
+                Graph.zoom(hasChildren && !node.collapsed ? 1.5 : 3, 800);
+            })
+            // Custom Canvas Render
+            .nodeCanvasObject((node, ctx, globalScale) => {
+                const label = node.name;
+                const fontSize = 12 / globalScale;
+                const hasChildren = Boolean(childrenById[node.id]?.length);
+                const isMatch = searchTerm && node.name.toLowerCase().includes(searchTerm);
+                const isDimmed = searchTerm && !isMatch;
+
+                ctx.font = `${fontSize}px Inter, Sans-Serif`;
+
+                // Glow effect
+                const glowRadius = node.val * (isMatch ? 3.5 : 2.2);
+                const grd = ctx.createRadialGradient(node.x, node.y, node.val * 0.3, node.x, node.y, glowRadius);
+                grd.addColorStop(0, node.color + (isDimmed ? '22' : '55'));
+                grd.addColorStop(1, node.color + '00');
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, glowRadius, 0, 2 * Math.PI);
+                ctx.fillStyle = grd;
+                ctx.fill();
+
+                // Node circle
+                ctx.globalAlpha = isDimmed ? 0.2 : 1;
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, node.val, 0, 2 * Math.PI);
+                ctx.fillStyle = node.color;
+                ctx.fill();
+
+                // Stroke
+                ctx.lineWidth = (isMatch ? 3 : hasChildren && node.collapsed ? 2.5 : 1) / globalScale;
+                ctx.strokeStyle = isMatch ? '#facc15' : hasChildren && node.collapsed ? '#fbbf24' : 'rgba(255,255,255,0.5)';
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+
+                // '+' inside collapsed expandable nodes
+                if (hasChildren && node.collapsed && node.val >= 4 && !isDimmed) {
+                    ctx.fillStyle = isLight ? '#fff' : '#0f172a';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `bold ${node.val * 1.1}px Inter`;
+                    ctx.fillText('+', node.x, node.y + 0.5 / globalScale);
+                }
+
+                // Label
+                if (!isDimmed && (globalScale > 1.2 || node.val > 6 || (hasChildren && node.collapsed))) {
+                    ctx.font = `${isMatch ? 'bold ' : ''}${fontSize}px Inter, Sans-Serif`;
+                    const textWidth = ctx.measureText(label).width;
+                    const textY = node.y + node.val + 4 / globalScale;
+                    const pad = 3 / globalScale;
+
+                    // Label background
+                    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.85)';
+                    ctx.beginPath();
+                    const rx = node.x - textWidth / 2 - pad;
+                    const ry = textY - pad * 0.5;
+                    const rw = textWidth + pad * 2;
+                    const rh = fontSize + pad * 1.5;
+                    const r = 3 / globalScale;
+                    ctx.moveTo(rx + r, ry); ctx.lineTo(rx + rw - r, ry);
+                    ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r);
+                    ctx.lineTo(rx + rw, ry + rh - r);
+                    ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - r, ry + rh);
+                    ctx.lineTo(rx + r, ry + rh);
+                    ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r);
+                    ctx.lineTo(rx, ry + r);
+                    ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'top';
+                    ctx.fillStyle = isMatch ? '#facc15' : isLight ? '#0f172a' : 'rgba(248,250,252,0.95)';
+                    ctx.fillText(label, node.x, textY);
+                }
+            });
+
+        // Add spread force to separate clusters nicely
+        Graph.d3Force('charge').strength(-500); // Increased slightly to accommodate bigger nodes
+        
+        // Dynamic link distance: longer for main hubs, shorter for leaves
+        Graph.d3Force('link').distance(link => {
+            // Robust lookup against gNodesById, in case `link.source` has not yet been converted by d3
+            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+            const sourceNode = gNodesById[sourceId];
+            const sourceGroup = sourceNode ? sourceNode.group : null;
+            
+            if (sourceId === 'synesis') return 180; // Core hub gets lots of space to breathe
+            if (sourceGroup === 'skill' || sourceGroup === 'category') return 90; // Secondary hubs get medium space
+            return 50; // Leaf nodes (tasks/files) stay compact but account for bigger nodes
+        });
+
+        // Dismiss node info on background click
+        Graph.onBackgroundClick(() => {
+            document.getElementById('node-info').style.display = 'none';
+        });
+
+        // ── Theme Toggle (wired after Graph exists) ────────────────────
+        document.getElementById('theme-toggle').addEventListener('click', () => {
+            isLight = !isLight;
+            document.documentElement.classList.toggle('light', isLight);
+            document.getElementById('theme-label').textContent = isLight ? '☀️ Light' : '🌙 Dark';
+            Graph.backgroundColor(isLight ? '#e2e8f0' : '#0f172a');
+        });
+
+        // ── Search (wired after Graph exists) ─────────────────────────
+        document.getElementById('search-box').addEventListener('input', e => {
+            searchTerm = e.target.value.trim().toLowerCase();
+        });
+
+        // Handle Window Resize
+        window.addEventListener('resize', () => {
+            Graph.width(window.innerWidth);
+            Graph.height(window.innerHeight);
+        });
+    </script>
+</body>
+</html>
