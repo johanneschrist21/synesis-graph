@@ -186,22 +186,17 @@
     <div id="graph-container"></div>
 
     <script>
-        // ── State (declared first so all callbacks can close over them) ──
         let isLight = false;
         let searchTerm = '';
 
-        initGraph(GRAPH_DATA);
-
-        function initGraph(rawData) {
-        // Theme configuration (inside initGraph)
         const theme = {
-            center:   { color: '#f59e0b', size: 24, name: 'Core System' },  // Amber
-            channel:  { color: '#3b82f6', size: 14, name: 'Channel' },      // Blue
-            skill:    { color: '#8b5cf6', size: 18, name: 'Skill Module' }, // Purple
-            category: { color: '#f97316', size: 14, name: 'Category' },     // Orange
-            file:     { color: '#10b981', size: 10, name: 'File/Doc' },     // Emerald
-            media:    { color: '#94a3b8', size: 8,  name: 'Media Asset' },  // Slate
-            task:     { color: '#ec4899', size: 6,  name: 'Task/Section' }  // Pink
+            center:   { color: '#f59e0b', size: 24, name: 'Core System' },
+            channel:  { color: '#3b82f6', size: 14, name: 'Channel' },
+            skill:    { color: '#8b5cf6', size: 18, name: 'Skill Module' },
+            category: { color: '#f97316', size: 14, name: 'Category' },
+            file:     { color: '#10b981', size: 10, name: 'File/Doc' },
+            media:    { color: '#94a3b8', size: 8,  name: 'Media Asset' },
+            task:     { color: '#ec4899', size: 6,  name: 'Task/Section' }
         };
 
         // Populate Legend
@@ -209,63 +204,52 @@
         Object.keys(theme).forEach(type => {
             const li = document.createElement('li');
             li.className = 'flex items-center gap-2';
-            li.innerHTML = `
-                <div style="width:10px;height:10px;border-radius:50%;background:${theme[type].color};box-shadow:0 0 7px ${theme[type].color}99;flex-shrink:0"></div>
-                <span class="panel-text">${theme[type].name}</span>
-            `;
+            li.innerHTML = `<div style="width:10px;height:10px;border-radius:50%;background:${theme[type].color};box-shadow:0 0 7px ${theme[type].color}99;flex-shrink:0"></div><span class="panel-text">${theme[type].name}</span>`;
             legendList.appendChild(li);
         });
 
-        // Build hierarchy mapping to support expand/collapse
+        // Build hierarchy
         const childrenById = {};
-        rawData.edges.forEach(e => {
+        GRAPH_DATA.edges.forEach(e => {
             if (!childrenById[e.from]) childrenById[e.from] = [];
             childrenById[e.from].push(e.to);
         });
 
-        // Calculate depths from center ('synesis') to know default collapse state
+        // Calculate depths
         const depths = { 'synesis': 0 };
-        const queue = ['synesis'];
-        while(queue.length > 0) {
-            const id = queue.shift();
+        const bfsQueue = ['synesis'];
+        while (bfsQueue.length > 0) {
+            const id = bfsQueue.shift();
             (childrenById[id] || []).forEach(childId => {
                 if (depths[childId] === undefined) {
                     depths[childId] = depths[id] + 1;
-                    queue.push(childId);
+                    bfsQueue.push(childId);
                 }
             });
         }
 
-        // Initialize stateful node objects
-        const gNodes = rawData.nodes.map(n => ({
+        // Stateful nodes
+        const gNodes = GRAPH_DATA.nodes.map(n => ({
             id: n.id,
             name: n.label,
             group: n.type,
             val: theme[n.type]?.size || 5,
             color: theme[n.type]?.color || '#ffffff',
-            // Collapse nodes at depth 2 or deeper by default (hides depth 3+)
-            collapsed: depths[n.id] >= 2 
+            collapsed: depths[n.id] >= 2
         }));
 
         const gNodesById = {};
         gNodes.forEach(n => gNodesById[n.id] = n);
 
-        // Initialize stateful link objects
-        const gLinks = rawData.edges.map(e => ({
-            source: e.from,
-            target: e.to
-        }));
+        // Stateful links
+        const gLinks = GRAPH_DATA.edges.map(e => ({ source: e.from, target: e.to }));
 
-        // Function to compute currently visible graph
         function getVisibleGraphData() {
             const visibleNodeIds = new Set(['synesis']);
             const q = ['synesis'];
-
-            // Traverse from root, stopping at collapsed nodes
-            while(q.length > 0) {
+            while (q.length > 0) {
                 const id = q.shift();
                 const node = gNodesById[id];
-                
                 if (!node?.collapsed) {
                     (childrenById[id] || []).forEach(childId => {
                         if (!visibleNodeIds.has(childId)) {
@@ -275,33 +259,25 @@
                     });
                 }
             }
-
-            // Important Fix: Return cloned link structures! 
-            // force-graph mutates the source/target into object references. If we feed it recycled mutated arrays, it crashes.
             const visibleNodes = gNodes.filter(n => visibleNodeIds.has(n.id));
             const visibleLinks = gLinks.filter(l => {
-                const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
-                const targetId = typeof l.target === 'object' ? l.target.id : l.target;
-                return visibleNodeIds.has(sourceId) && visibleNodeIds.has(targetId);
+                const sid = typeof l.source === 'object' ? l.source.id : l.source;
+                const tid = typeof l.target === 'object' ? l.target.id : l.target;
+                return visibleNodeIds.has(sid) && visibleNodeIds.has(tid);
             }).map(l => ({
                 source: typeof l.source === 'object' ? l.source.id : l.source,
                 target: typeof l.target === 'object' ? l.target.id : l.target
             }));
-
             return { nodes: visibleNodes, links: visibleLinks };
         }
 
-        // Initialize Graph
-        const elem = document.getElementById('graph-container');
-        const Graph = ForceGraph()(elem)
+        const Graph = ForceGraph()(document.getElementById('graph-container'))
             .graphData(getVisibleGraphData())
             .backgroundColor('#0f172a')
-            // Node Styling
             .nodeId('id')
             .nodeVal('val')
             .nodeColor('color')
             .nodeLabel(node => `<b>${node.name}</b><br/><span style="font-size:11px;opacity:0.7">Type: ${node.group}</span>`)
-            // Links & Physics
             .linkColor(link => {
                 const sid = typeof link.source === 'object' ? link.source.id : link.source;
                 const src = gNodesById[sid];
@@ -311,7 +287,7 @@
                 const sid = typeof link.source === 'object' ? link.source.id : link.source;
                 const src = gNodesById[sid];
                 if (!src) return 1;
-                return src.group === 'center' ? 2.5 : src.group === 'skill' || src.group === 'category' ? 1.8 : 1;
+                return src.group === 'center' ? 2.5 : (src.group === 'skill' || src.group === 'category') ? 1.8 : 1;
             })
             .linkDirectionalArrowLength(4)
             .linkDirectionalArrowRelPos(1)
@@ -323,17 +299,12 @@
                 return src ? src.color : '#94a3b8';
             })
             .linkDirectionalParticleSpeed(0.005)
-            // Interactions
             .onNodeClick(node => {
                 const hasChildren = Boolean(childrenById[node.id]?.length);
-
                 if (hasChildren) {
                     node.collapsed = !node.collapsed;
                     Graph.graphData(getVisibleGraphData());
                 }
-
-                // Node info panel
-                const info = document.getElementById('node-info');
                 const childCount = (childrenById[node.id] || []).length;
                 document.getElementById('node-info-dot').style.background = node.color;
                 document.getElementById('node-info-dot').style.boxShadow = `0 0 8px ${node.color}`;
@@ -342,12 +313,13 @@
                 document.getElementById('node-info-children').textContent = childCount
                     ? `${childCount} connection${childCount > 1 ? 's' : ''} — click to ${node.collapsed ? 'expand' : 'collapse'}`
                     : 'Leaf node';
-                info.style.display = 'block';
-
+                document.getElementById('node-info').style.display = 'block';
                 Graph.centerAt(node.x, node.y, 800);
                 Graph.zoom(hasChildren && !node.collapsed ? 1.5 : 3, 800);
             })
-            // Custom Canvas Render
+            .onBackgroundClick(() => {
+                document.getElementById('node-info').style.display = 'none';
+            })
             .nodeCanvasObject((node, ctx, globalScale) => {
                 const label = node.name;
                 const fontSize = 12 / globalScale;
@@ -355,9 +327,7 @@
                 const isMatch = searchTerm && node.name.toLowerCase().includes(searchTerm);
                 const isDimmed = searchTerm && !isMatch;
 
-                ctx.font = `${fontSize}px Inter, Sans-Serif`;
-
-                // Glow effect
+                // Glow
                 const glowRadius = node.val * (isMatch ? 3.5 : 2.2);
                 const grd = ctx.createRadialGradient(node.x, node.y, node.val * 0.3, node.x, node.y, glowRadius);
                 grd.addColorStop(0, node.color + (isDimmed ? '22' : '55'));
@@ -367,7 +337,7 @@
                 ctx.fillStyle = grd;
                 ctx.fill();
 
-                // Node circle
+                // Circle
                 ctx.globalAlpha = isDimmed ? 0.2 : 1;
                 ctx.beginPath();
                 ctx.arc(node.x, node.y, node.val, 0, 2 * Math.PI);
@@ -380,13 +350,13 @@
                 ctx.stroke();
                 ctx.globalAlpha = 1;
 
-                // '+' inside collapsed expandable nodes
+                // '+' on collapsed
                 if (hasChildren && node.collapsed && node.val >= 4 && !isDimmed) {
                     ctx.fillStyle = isLight ? '#fff' : '#0f172a';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     ctx.font = `bold ${node.val * 1.1}px Inter`;
-                    ctx.fillText('+', node.x, node.y + 0.5 / globalScale);
+                    ctx.fillText('+', node.x, node.y);
                 }
 
                 // Label
@@ -395,15 +365,13 @@
                     const textWidth = ctx.measureText(label).width;
                     const textY = node.y + node.val + 4 / globalScale;
                     const pad = 3 / globalScale;
-
-                    // Label background
-                    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.85)';
-                    ctx.beginPath();
                     const rx = node.x - textWidth / 2 - pad;
                     const ry = textY - pad * 0.5;
                     const rw = textWidth + pad * 2;
                     const rh = fontSize + pad * 1.5;
                     const r = 3 / globalScale;
+                    ctx.fillStyle = isLight ? 'rgba(255,255,255,0.88)' : 'rgba(15,23,42,0.85)';
+                    ctx.beginPath();
                     ctx.moveTo(rx + r, ry); ctx.lineTo(rx + rw - r, ry);
                     ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r);
                     ctx.lineTo(rx + rw, ry + rh - r);
@@ -414,7 +382,6 @@
                     ctx.quadraticCurveTo(rx, ry, rx + r, ry);
                     ctx.closePath();
                     ctx.fill();
-
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'top';
                     ctx.fillStyle = isMatch ? '#facc15' : isLight ? '#0f172a' : 'rgba(248,250,252,0.95)';
@@ -422,27 +389,15 @@
                 }
             });
 
-        // Add spread force to separate clusters nicely
-        Graph.d3Force('charge').strength(-500); // Increased slightly to accommodate bigger nodes
-        
-        // Dynamic link distance: longer for main hubs, shorter for leaves
+        Graph.d3Force('charge').strength(-500);
         Graph.d3Force('link').distance(link => {
-            // Robust lookup against gNodesById, in case `link.source` has not yet been converted by d3
-            const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-            const sourceNode = gNodesById[sourceId];
-            const sourceGroup = sourceNode ? sourceNode.group : null;
-            
-            if (sourceId === 'synesis') return 180; // Core hub gets lots of space to breathe
-            if (sourceGroup === 'skill' || sourceGroup === 'category') return 90; // Secondary hubs get medium space
-            return 50; // Leaf nodes (tasks/files) stay compact but account for bigger nodes
+            const sid = typeof link.source === 'object' ? link.source.id : link.source;
+            const src = gNodesById[sid];
+            if (sid === 'synesis') return 180;
+            if (src?.group === 'skill' || src?.group === 'category') return 90;
+            return 50;
         });
 
-        // Dismiss node info on background click
-        Graph.onBackgroundClick(() => {
-            document.getElementById('node-info').style.display = 'none';
-        });
-
-        // ── Theme Toggle (wired after Graph exists) ────────────────────
         document.getElementById('theme-toggle').addEventListener('click', () => {
             isLight = !isLight;
             document.documentElement.classList.toggle('light', isLight);
@@ -450,17 +405,14 @@
             Graph.backgroundColor(isLight ? '#e2e8f0' : '#0f172a');
         });
 
-        // ── Search (wired after Graph exists) ─────────────────────────
         document.getElementById('search-box').addEventListener('input', e => {
             searchTerm = e.target.value.trim().toLowerCase();
         });
 
-        // Handle Window Resize
         window.addEventListener('resize', () => {
             Graph.width(window.innerWidth);
             Graph.height(window.innerHeight);
         });
-        } // end initGraph
     </script>
 </body>
 </html>
