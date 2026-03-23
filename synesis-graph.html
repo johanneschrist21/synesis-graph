@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Force Graph Library -->
     <script src="https://unpkg.com/force-graph"></script>
+    <!-- Graph Data -->
+    <script src="./graph-data.js"></script>
     <style>
         :root {
             --bg: #0f172a;
@@ -188,10 +190,7 @@
         let isLight = false;
         let searchTerm = '';
 
-        fetch('./graph-data.json')
-            .then(r => r.json())
-            .then(rawData => initGraph(rawData))
-            .catch(err => console.error('Failed to load graph-data.json:', err));
+        initGraph(GRAPH_DATA);
 
         function initGraph(rawData) {
         // Theme configuration (inside initGraph)
