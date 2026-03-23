@@ -271,8 +271,8 @@
             id: n.id,
             name: n.label,
             group: n.type,
-            val: theme[n.type]?.size || 5,
-            color: theme[n.type]?.color || '#ffffff',
+            val: (theme[n.type] && theme[n.type].size) || 5,
+            color: (theme[n.type] && theme[n.type].color) || '#ffffff',
             collapsed: depths[n.id] >= 2
         }));
 
@@ -288,7 +288,7 @@
             while (q.length > 0) {
                 const id = q.shift();
                 const node = gNodesById[id];
-                if (!node?.collapsed) {
+                if (!(node && node.collapsed)) {
                     (childrenById[id] || []).forEach(childId => {
                         if (!visibleNodeIds.has(childId)) {
                             visibleNodeIds.add(childId);
@@ -338,7 +338,7 @@
             })
             .linkDirectionalParticleSpeed(0.005)
             .onNodeClick(node => {
-                const hasChildren = Boolean(childrenById[node.id]?.length);
+                const hasChildren = Boolean(childrenById[node.id] && childrenById[node.id].length);
                 if (hasChildren) {
                     node.collapsed = !node.collapsed;
                     Graph.graphData(getVisibleGraphData());
@@ -361,7 +361,7 @@
             .nodeCanvasObject((node, ctx, globalScale) => {
                 const label = node.name;
                 const fontSize = 12 / globalScale;
-                const hasChildren = Boolean(childrenById[node.id]?.length);
+                const hasChildren = Boolean(childrenById[node.id] && childrenById[node.id].length);
                 const isMatch = searchTerm && node.name.toLowerCase().includes(searchTerm);
                 const isDimmed = searchTerm && !isMatch;
 
@@ -432,7 +432,7 @@
             const sid = typeof link.source === 'object' ? link.source.id : link.source;
             const src = gNodesById[sid];
             if (sid === 'synesis') return 180;
-            if (src?.group === 'skill' || src?.group === 'category') return 90;
+            if (src && (src.group === 'skill' || src.group === 'category')) return 90;
             return 50;
         });
 
